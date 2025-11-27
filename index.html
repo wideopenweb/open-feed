@@ -303,82 +303,116 @@
                 container.style.flexDirection = 'column';
                 container.style.gap = '18px';
 
-                for (const dir of dirs) {
-                    setStatus(`Loading post: ${dir.name}...`);
+                // Create placeholders for each post and lazy-load content as user scrolls
+                const observerOptions = {root: fileContent, rootMargin: '200px', threshold: 0.01};
+                const loadingMap = new Map();
+
+                async function loadPostSection(dir, section, bodyEl) {
+                    if (loadingMap.get(dir.name)) return; // already loading/loaded
+                    loadingMap.set(dir.name, true);
                     try {
+                        setStatus(`Loading post: ${dir.name}...`);
                         const dirUrl = `${baseUrl}/${encodeURIComponent(postsPath)}/${encodeURIComponent(dir.name)}`;
                         const dirContents = await apiFetch(dirUrl);
-                        // find README (case-insensitive)
                         const readmeFile = dirContents.find(f => /^readme(\.(md|markdown))?$/i.test(f.name));
-                        const section = document.createElement('section');
-                        section.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.01), transparent)';
-                        section.style.padding = '10px';
-                        section.style.borderRadius = '6px';
-
-                        const header = document.createElement('div');
-                        header.style.display = 'flex';
-                        header.style.justifyContent = 'space-between';
-                        header.style.alignItems = 'center';
-                        header.style.marginBottom = '6px';
-
-                        const titleDiv = document.createElement('div');
-                        titleDiv.style.fontWeight = '700';
-                        titleDiv.textContent = dir.name;
-
-                        const badge = document.createElement('div');
-                        badge.className = 'small';
-                        badge.style.opacity = '0.9';
-                        badge.style.background = 'rgba(255,255,255,0.02)';
-                        badge.style.padding = '4px 8px';
-                        badge.style.borderRadius = '999px';
-                        badge.style.fontSize = '12px';
-                        badge.style.color = 'var(--muted)';
-                        if (dir._latestCommitDate) {
-                            const d = new Date(dir._latestCommitDate);
-                            badge.textContent = d.toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
-                            badge.title = d.toISOString();
-                        } else {
-                            badge.textContent = '';
-                        }
-
-                        header.appendChild(titleDiv);
-                        header.appendChild(badge);
-                        section.appendChild(header);
-
                         if (!readmeFile) {
                             const note = document.createElement('div');
                             note.className = 'small';
                             note.textContent = 'No README found for this post.';
-                            section.appendChild(note);
-                            container.appendChild(section);
-                            continue;
+                            bodyEl.appendChild(note);
+                            return;
                         }
-
-                        // fetch the README file object (includes base64 content)
                         const fileData = await apiFetch(readmeFile.url);
                         const decoded = decodeBase64ToUtf8(fileData.content || '');
-                        const wrapper = document.createElement('div');
-                        // render markdown
                         const html = marked.parse(decoded || '');
-                        wrapper.innerHTML = html;
-                        // rewrite relative image URLs to raw.githubusercontent
-                        rewriteRelativeImageSrcs(wrapper, `${postsPath}/${dir.name}`);
-                        // highlight code blocks within this wrapper
-                        wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-
-                        section.appendChild(wrapper);
-                        container.appendChild(section);
-                    } catch (innerErr) {
-                        const errNote = document.createElement('div');
-                        errNote.className = 'small';
-                        errNote.style.color = '#ffb4b4';
-                        errNote.textContent = `Failed to load post ${dir.name}: ${innerErr.message}`;
-                        container.appendChild(errNote);
+                        bodyEl.innerHTML = html;
+                        rewriteRelativeImageSrcs(bodyEl, `${postsPath}/${dir.name}`);
+                        bodyEl.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+                        setStatus('');
+                    } catch (err) {
+                        bodyEl.innerHTML = `<div class="small" style="color:#ffb4b4">Failed to load post ${dir.name}: ${err.message}</div>`;
                     }
                 }
 
+                const io = new IntersectionObserver((entries, obs) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const section = entry.target;
+                            const dirName = section.dataset.dirName;
+                            const dirObj = dirs.find(d => d.name === dirName);
+                            const bodyEl = section.querySelector('.post-body');
+                            if (dirObj && bodyEl && !section.dataset.loaded) {
+                                loadPostSection(dirObj, section, bodyEl);
+                                section.dataset.loaded = '1';
+                                obs.unobserve(section);
+                            }
+                        }
+                    });
+                }, observerOptions);
+
+                for (const dir of dirs) {
+                    const section = document.createElement('section');
+                    section.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.01), transparent)';
+                    section.style.padding = '10px';
+                    section.style.borderRadius = '6px';
+                    section.dataset.dirName = dir.name;
+
+                    const header = document.createElement('div');
+                    header.style.display = 'flex';
+                    header.style.justifyContent = 'space-between';
+                    header.style.alignItems = 'center';
+                    header.style.marginBottom = '6px';
+
+                    const titleDiv = document.createElement('div');
+                    titleDiv.style.fontWeight = '700';
+                    titleDiv.textContent = dir.name;
+
+                    const badge = document.createElement('div');
+                    badge.className = 'small';
+                    badge.style.opacity = '0.9';
+                    badge.style.background = 'rgba(255,255,255,0.02)';
+                    badge.style.padding = '4px 8px';
+                    badge.style.borderRadius = '999px';
+                    badge.style.fontSize = '12px';
+                    badge.style.color = 'var(--muted)';
+                    if (dir._latestCommitDate) {
+                        const d = new Date(dir._latestCommitDate);
+                        badge.textContent = d.toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+                        badge.title = d.toISOString();
+                    } else {
+                        badge.textContent = '';
+                    }
+
+                    header.appendChild(titleDiv);
+                    header.appendChild(badge);
+                    section.appendChild(header);
+
+                    // body placeholder
+                    const body = document.createElement('div');
+                    body.className = 'post-body';
+                    body.innerHTML = '<div class="small">Scroll to load post...</div>';
+                    section.appendChild(body);
+
+                    container.appendChild(section);
+                    // observe for lazy loading
+                    io.observe(section);
+                }
+                // when container appended below, observer will start reacting as user scrolls
+
                 fileContent.innerHTML = '';
                 fileContent.appendChild(container);
+                // Preload first 2 posts immediately (above the fold)
+                const toPreload = 2;
+                for (let i = 0; i < Math.min(toPreload, dirs.length); i++) {
+                    const sec = container.children[i];
+                    if (sec) {
+                        const bodyEl = sec.querySelector('.post-body');
+                        // mark loaded and fetch
+                        sec.dataset.loaded = '1';
+                        loadPostSection(dirs[i], sec, bodyEl);
+                        try { io.unobserve(sec); } catch(e) {}
+                    }
+                }
                 setStatus('Posts loaded.');
             } catch (err) {
                 setStatus('Failed to load posts: ' + err.message, true);
