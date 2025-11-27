@@ -38,3 +38,8 @@ https://en.wikipedia.org/wiki/List_of_social_platforms_with_at_least_100_million
 * Tumblr
 * Discord
 * Nextdoor
+
+## how to
+The index.html file takes arguments as so:
+
+file:///Users/ben/github/wideopenweb/open-feed/index.html?owner=benofben&repo=benlackey-feed&path=posts
