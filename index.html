@@ -56,6 +56,28 @@
         const fileTitle = document.getElementById('fileTitle');
         const fileContent = document.getElementById('fileContent');
         const fileMeta = document.getElementById('fileMeta');
+        let defaultBranch = 'main';
+
+        // Rewrite relative image src attributes inside `rootEl` to raw.githubusercontent URLs
+        function rewriteRelativeImageSrcs(rootEl, basePath) {
+            if (!rootEl) return;
+            basePath = (basePath || '').replace(/^\/*|\/*$/g, '');
+            const imgs = rootEl.querySelectorAll('img');
+            imgs.forEach(img => {
+                const src = img.getAttribute('src') || '';
+                if (!src) return;
+                // absolute or protocol-relative or data URLs are left alone
+                if (/^(https?:|data:|\/\/)/i.test(src)) return;
+                // build a raw.githubusercontent base for resolution
+                const baseRaw = `https://raw.githubusercontent.com/${owner}/${repo}/${defaultBranch}/${basePath ? basePath + '/' : ''}`;
+                try {
+                    img.src = new URL(src, baseRaw).href;
+                } catch (e) {
+                    // fallback: simple concatenation
+                    img.src = baseRaw + src.replace(/^\/*/, '');
+                }
+            });
+        }
 
         function setStatus(text, isError = false) {
             statusEl.textContent = text;
@@ -177,18 +199,21 @@
                 }
                 const b64 = data.content || '';
                 const decoded = decodeBase64ToUtf8(b64);
-                renderContent(entry.name, decoded);
+                renderContent(entry.name, decoded, entry.path);
                 setStatus('File loaded.');
             } catch (err) {
                 setStatus('Failed to load file: ' + err.message, true);
             }
         }
 
-        function renderContent(filename, content) {
+        function renderContent(filename, content, filePath) {
             const lower = filename.toLowerCase();
             if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
                 const html = marked.parse(content || '');
                 fileContent.innerHTML = html;
+                // rewrite any relative image URLs using the file's directory as base
+                const dirPath = (filePath || '').replace(/\/[^\/]+$/, '').replace(/^\/*/, '');
+                rewriteRelativeImageSrcs(fileContent, dirPath);
                 document.querySelectorAll('pre code').forEach((block) => {
                     hljs.highlightElement(block);
                 });
@@ -233,6 +258,8 @@
                 const repoApi = `https://api.github.com/repos/${owner}/${repo}`;
                 const baseUrl = `${repoApi}/contents`;
                 const postsUrl = `${baseUrl}/${encodeURIComponent(postsPath)}`;
+                const repoInfo = await apiFetch(repoApi);
+                defaultBranch = repoInfo.default_branch || defaultBranch;
                 const posts = await apiFetch(postsUrl);
                 if (!Array.isArray(posts)) {
                     setStatus('`posts` is not a directory or is missing.', true);
@@ -334,6 +361,8 @@
                         // render markdown
                         const html = marked.parse(decoded || '');
                         wrapper.innerHTML = html;
+                        // rewrite relative image URLs to raw.githubusercontent
+                        rewriteRelativeImageSrcs(wrapper, `${postsPath}/${dir.name}`);
                         // highlight code blocks within this wrapper
                         wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
 
