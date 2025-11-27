@@ -230,7 +230,8 @@
             fileMeta.textContent = '';
             fileContent.innerHTML = '<div class="small">Loading posts... please wait.</div>';
             try {
-                const baseUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
+                const repoApi = `https://api.github.com/repos/${owner}/${repo}`;
+                const baseUrl = `${repoApi}/contents`;
                 const postsUrl = `${baseUrl}/${encodeURIComponent(postsPath)}`;
                 const posts = await apiFetch(postsUrl);
                 if (!Array.isArray(posts)) {
@@ -239,7 +240,30 @@
                     return;
                 }
 
-                const dirs = posts.filter(p => p.type === 'dir');
+                // find directories under posts
+                let dirs = posts.filter(p => p.type === 'dir');
+                // fetch latest commit for each directory so we can sort newest → oldest
+                try {
+                    const dated = await Promise.all(dirs.map(async (d) => {
+                        try {
+                            const commits = await apiFetch(`${repoApi}/commits?path=${encodeURIComponent(postsPath + '/' + d.name)}&per_page=1`);
+                            const latest = Array.isArray(commits) && commits[0] && commits[0].commit ? (commits[0].commit.author?.date || commits[0].commit.committer?.date) : null;
+                            return {...d, _latestCommitDate: latest ? new Date(latest).toISOString() : null};
+                        } catch (e) {
+                            return {...d, _latestCommitDate: null};
+                        }
+                    }));
+                    // sort by latest commit date descending (newest first); fallback to name
+                    dated.sort((a,b) => {
+                        if (a._latestCommitDate && b._latestCommitDate) return b._latestCommitDate.localeCompare(a._latestCommitDate);
+                        if (a._latestCommitDate) return -1;
+                        if (b._latestCommitDate) return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    dirs = dated;
+                } catch (e) {
+                    // if commit lookups fail, continue with unsorted dirs
+                }
                 if (dirs.length === 0) {
                     setStatus('No post directories found under `posts`.', true);
                     fileContent.innerHTML = '<div class="small">No post directories found under `posts`.</div>';
@@ -264,11 +288,35 @@
                         section.style.padding = '10px';
                         section.style.borderRadius = '6px';
 
-                        const h = document.createElement('div');
-                        h.style.fontWeight = '700';
-                        h.style.marginBottom = '6px';
-                        h.textContent = dir.name;
-                        section.appendChild(h);
+                        const header = document.createElement('div');
+                        header.style.display = 'flex';
+                        header.style.justifyContent = 'space-between';
+                        header.style.alignItems = 'center';
+                        header.style.marginBottom = '6px';
+
+                        const titleDiv = document.createElement('div');
+                        titleDiv.style.fontWeight = '700';
+                        titleDiv.textContent = dir.name;
+
+                        const badge = document.createElement('div');
+                        badge.className = 'small';
+                        badge.style.opacity = '0.9';
+                        badge.style.background = 'rgba(255,255,255,0.02)';
+                        badge.style.padding = '4px 8px';
+                        badge.style.borderRadius = '999px';
+                        badge.style.fontSize = '12px';
+                        badge.style.color = 'var(--muted)';
+                        if (dir._latestCommitDate) {
+                            const d = new Date(dir._latestCommitDate);
+                            badge.textContent = d.toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+                            badge.title = d.toISOString();
+                        } else {
+                            badge.textContent = '';
+                        }
+
+                        header.appendChild(titleDiv);
+                        header.appendChild(badge);
+                        section.appendChild(header);
 
                         if (!readmeFile) {
                             const note = document.createElement('div');
