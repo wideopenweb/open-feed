@@ -237,38 +237,94 @@
         loadBtn.addEventListener('click', async () => {
             const owner = ownerInput.value.trim();
             const repo = repoInput.value.trim();
-            const path = pathInput.value.trim();
             if (!owner || !repo) {
                 setStatus('Owner and repo required', true);
                 return;
             }
-            setStatus('Loading repository contents...');
+            // We specifically load the `posts` directory and render each post's README
+            const postsPath = 'posts';
+            setStatus('Loading posts directory...');
             treeRoot.innerHTML = '';
-            fileTitle.textContent = 'No file selected';
-            fileContent.textContent = 'Select a file in the tree to preview it here.';
+            fileTitle.textContent = 'Posts';
+            fileMeta.textContent = '';
+            fileContent.innerHTML = '<div class="small">Loading posts... please wait.</div>';
             try {
-                const url = path ? 
-                    `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}` :
-                    `https://api.github.com/repos/${owner}/${repo}/contents`;
-                const data = await apiFetch(url);
-                if (Array.isArray(data)) {
-                    renderDirectory(data);
-                    setStatus('Repository contents loaded.');
-                } else if (data.type === 'file') {
-                    // single file endpoint
-                    renderDirectory([{
-                        name: data.name,
-                        path: data.path,
-                        type: 'file',
-                        size: data.size,
-                        content: data.content
-                    }]);
-                    setStatus('Single file loaded.');
-                } else {
-                    setStatus('Unexpected response type', true);
+                const baseUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
+                const postsUrl = `${baseUrl}/${encodeURIComponent(postsPath)}`;
+                const posts = await apiFetch(postsUrl);
+                if (!Array.isArray(posts)) {
+                    setStatus('`posts` is not a directory or is missing.', true);
+                    fileContent.innerHTML = '<div class="small">No `posts` directory found in the repository.</div>';
+                    return;
                 }
+
+                const dirs = posts.filter(p => p.type === 'dir');
+                if (dirs.length === 0) {
+                    setStatus('No post directories found under `posts`.', true);
+                    fileContent.innerHTML = '<div class="small">No post directories found under `posts`.</div>';
+                    return;
+                }
+
+                // Build a combined view: each post section contains rendered README
+                const container = document.createElement('div');
+                container.style.display = 'flex';
+                container.style.flexDirection = 'column';
+                container.style.gap = '18px';
+
+                for (const dir of dirs) {
+                    setStatus(`Loading post: ${dir.name}...`);
+                    try {
+                        const dirUrl = `${baseUrl}/${encodeURIComponent(postsPath)}/${encodeURIComponent(dir.name)}`;
+                        const dirContents = await apiFetch(dirUrl);
+                        // find README (case-insensitive)
+                        const readmeFile = dirContents.find(f => /^readme(\.(md|markdown))?$/i.test(f.name));
+                        const section = document.createElement('section');
+                        section.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.01), transparent)';
+                        section.style.padding = '10px';
+                        section.style.borderRadius = '6px';
+
+                        const h = document.createElement('div');
+                        h.style.fontWeight = '700';
+                        h.style.marginBottom = '6px';
+                        h.textContent = dir.name;
+                        section.appendChild(h);
+
+                        if (!readmeFile) {
+                            const note = document.createElement('div');
+                            note.className = 'small';
+                            note.textContent = 'No README found for this post.';
+                            section.appendChild(note);
+                            container.appendChild(section);
+                            continue;
+                        }
+
+                        // fetch the README file object (includes base64 content)
+                        const fileData = await apiFetch(readmeFile.url);
+                        const decoded = decodeBase64ToUtf8(fileData.content || '');
+                        const wrapper = document.createElement('div');
+                        // render markdown
+                        const html = marked.parse(decoded || '');
+                        wrapper.innerHTML = html;
+                        // highlight code blocks within this wrapper
+                        wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+
+                        section.appendChild(wrapper);
+                        container.appendChild(section);
+                    } catch (innerErr) {
+                        const errNote = document.createElement('div');
+                        errNote.className = 'small';
+                        errNote.style.color = '#ffb4b4';
+                        errNote.textContent = `Failed to load post ${dir.name}: ${innerErr.message}`;
+                        container.appendChild(errNote);
+                    }
+                }
+
+                fileContent.innerHTML = '';
+                fileContent.appendChild(container);
+                setStatus('Posts loaded.');
             } catch (err) {
-                setStatus('Failed to load repo: ' + err.message, true);
+                setStatus('Failed to load posts: ' + err.message, true);
+                fileContent.innerHTML = `<div class="small" style="color:#ffb4b4">Failed to load posts: ${err.message}</div>`;
             }
         });
 
