@@ -5,5 +5,4 @@ Here's an example: https://wideopenweb.github.io/open-feed/index.html?owner=beno
 
 ## Roadmap
 * Intermingle multiple feeds
-* Render a single post
 * Comments
