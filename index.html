@@ -246,6 +246,32 @@
             return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
+        async function renderSinglePost(dirName) {
+            fileContent.innerHTML = '<div class="small">Loading single post...</div>';
+            fileTitle.textContent = dirName;
+            fileMeta.textContent = '';
+            try {
+                const postsPath = 'posts';
+                const baseUrl = `https://api.github.com/repos/${owner}/${repo}/contents`;
+                const dirUrl = `${baseUrl}/${encodeURIComponent(postsPath)}/${encodeURIComponent(dirName)}`;
+                const dirContents = await apiFetch(dirUrl);
+                const readmeFile = dirContents.find(f => /^readme(\.(md|markdown))?$/i.test(f.name));
+                if (!readmeFile) {
+                    fileContent.innerHTML = '<div class="small">No README found for this post.</div>';
+                    return;
+                }
+                const fileData = await apiFetch(readmeFile.url);
+                const decoded = decodeBase64ToUtf8(fileData.content || '');
+                const html = marked.parse(decoded || '');
+                fileContent.innerHTML = html;
+                rewriteRelativeImageSrcs(fileContent, `${postsPath}/${dirName}`);
+                fileContent.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+                setStatus('');
+            } catch (err) {
+                fileContent.innerHTML = `<div class="small" style="color:#ffb4b4">Failed to load post: ${err.message}</div>`;
+            }
+        }
+
         async function loadPosts(owner, repo) {
             if (!owner || !repo) {
                 setStatus('Owner and repo required', true);
@@ -366,9 +392,17 @@
                     header.style.alignItems = 'center';
                     header.style.marginBottom = '6px';
 
-                    const titleDiv = document.createElement('div');
+                    const titleDiv = document.createElement('a');
+                    titleDiv.href = '#';
+                    titleDiv.className = 'link';
                     titleDiv.style.fontWeight = '700';
+                    titleDiv.style.textDecoration = 'none';
+                    titleDiv.style.cursor = 'pointer';
                     titleDiv.textContent = dir.name;
+                    titleDiv.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        renderSinglePost(dir.name);
+                    });
 
                     const badge = document.createElement('div');
                     badge.className = 'small';
