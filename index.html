@@ -247,6 +247,10 @@
         }
 
         async function renderSinglePost(dirName) {
+            // Update URL with post parameter for deep linking
+            const newParams = new URLSearchParams(location.search);
+            newParams.set('post', dirName);
+            window.history.replaceState(null, '', '?' + newParams.toString());
             fileContent.innerHTML = '<div class="small">Loading single post...</div>';
             fileTitle.textContent = dirName;
             fileMeta.textContent = '';
@@ -459,6 +463,12 @@
 
         // Auto-load posts using query params or defaults
         loadPosts(owner, repo);
+
+        // Check URL for post parameter to load individual post
+        const postParam = params.get('post');
+        if (postParam) {
+            renderSinglePost(postParam);
+        }
 
         // inputs and sidebar removed; posts are auto-loaded from URL params or defaults
     </script>
