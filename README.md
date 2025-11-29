@@ -7,3 +7,4 @@ Here's an example: https://wideopenweb.github.io/open-feed/index.html?owner=beno
 * GitHub login to deal with API throttle
 * Comments - likely auth'd with GitHub
 * Intermingle multiple feeds
+* Better date handling -- maybe show created and updated but sort by updated?
