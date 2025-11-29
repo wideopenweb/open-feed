@@ -4,5 +4,6 @@ Open Feed is a social media feed on top of a GitHub repo.  It expects the repo t
 Here's an example: https://wideopenweb.github.io/open-feed/index.html?owner=benofben&repo=benlackey-feed&path=posts
 
 ## Roadmap
+* GitHub login to deal with API throttle
+* Comments - likely auth'd with GitHub
 * Intermingle multiple feeds
-* Comments
