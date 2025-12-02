@@ -8,3 +8,4 @@ Here's an example: https://wideopenweb.github.io/open-feed/index.html?owner=beno
 * Comments - likely auth'd with GitHub
 * Intermingle multiple feeds
 * Better date handling -- maybe show created and updated but sort by updated?
+* Improve Preview -- right now it just says open-feed.  Could have information on the feed or show the title and image from a particular post if one is being linked.
